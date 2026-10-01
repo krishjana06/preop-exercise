@@ -1,0 +1,13 @@
+[project]
+name = "preop-triage"
+version = "0.1.0"
+description = "Evidence-grounded preoperative scheduling triage"
+requires-python = ">=3.11"
+dependencies = ["openai>=2.0.0", "pydantic>=2.8.0"]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
