@@ -1,17 +1,29 @@
 import pytest
+
 from core import triage_submission
 from preop.medication import anticoagulants
 
 
 def add_plan(submission, text, day="2030-06-22"):
-    submission["documents"].append({"type": "Perioperative Medication Plan", "date": day, "text": text})
+    submission["documents"].append(
+        {"type": "Perioperative Medication Plan", "date": day, "text": text}
+    )
 
 
 def categories(submission):
     return {i.category for i in triage_submission(submission, model="unused").issues}
 
 
-@pytest.mark.parametrize("name,expected", [("Eliquis 5 mg", "apixaban"), ("Xarelto", "rivaroxaban"), ("Coumadin", "warfarin"), ("Pradaxa", "dabigatran"), ("Savaysa", "edoxaban")])
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Eliquis 5 mg", "apixaban"),
+        ("Xarelto", "rivaroxaban"),
+        ("Coumadin", "warfarin"),
+        ("Pradaxa", "dabigatran"),
+        ("Savaysa", "edoxaban"),
+    ],
+)
 def test_aliases(name, expected):
     assert anticoagulants(name) == {expected}
 
@@ -37,7 +49,15 @@ def test_inactive_anticoagulant_has_no_plan_requirement(submission):
     assert triage_submission(submission, model="unused").decision == "READY"
 
 
-@pytest.mark.parametrize("text", ["Hold Eliquis 2 days before surgery.", "Resume Eliquis after surgery.", "Patient takes Eliquis. Follow up with cardiology.", "Recommend discussing interruption of Eliquis; specific recommendations will follow."])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hold Eliquis 2 days before surgery.",
+        "Resume Eliquis after surgery.",
+        "Patient takes Eliquis. Follow up with cardiology.",
+        "Recommend discussing interruption of Eliquis; specific recommendations will follow.",
+    ],
+)
 def test_incomplete_plan(submission, text):
     submission["medications"] = [{"name": "apixaban", "active": True}]
     add_plan(submission, text)
@@ -46,32 +66,60 @@ def test_incomplete_plan(submission, text):
 
 def test_complete_brand_name_plan(submission):
     submission["medications"] = [{"name": "apixaban", "active": True}]
-    add_plan(submission, "Hold Eliquis 2 days before surgery. Resume Eliquis 24 hours after surgery once hemostasis is secure.")
+    add_plan(
+        submission,
+        "Hold Eliquis 2 days before surgery. Resume Eliquis 24 hours after surgery once hemostasis is secure.",
+    )
     assert triage_submission(submission, model="unused").decision == "READY"
 
 
 def test_current_switch_invalidates_old_plan(submission):
     submission["medications"] = [{"name": "warfarin", "active": True}]
-    add_plan(submission, "Hold warfarin 5 days before surgery. Resume warfarin after surgery.")
-    add_plan(submission, "MEDICATION RECONCILIATION:\nPatient switched from warfarin to apixaban.", "2030-06-28")
+    add_plan(
+        submission,
+        "Hold warfarin 5 days before surgery. Resume warfarin after surgery.",
+    )
+    add_plan(
+        submission,
+        "MEDICATION RECONCILIATION:\nPatient switched from warfarin to apixaban.",
+        "2030-06-28",
+    )
     assert categories(submission) == {"ANTICOAGULATION_MANAGEMENT"}
 
 
 def test_unknown_text_status_supersedes_structured_active(submission):
     submission["medications"] = [{"name": "warfarin", "active": True}]
-    add_plan(submission, "Coumadin: patient unable to confirm whether still taking.", "2030-06-28")
+    add_plan(
+        submission,
+        "Coumadin: patient unable to confirm whether still taking.",
+        "2030-06-28",
+    )
     assert categories(submission) == {"MISSING_REQUIRED_DATA"}
 
 
 def test_newer_incomplete_plan_supersedes_old_complete(submission):
     submission["medications"] = [{"name": "apixaban", "active": True}]
     add_plan(submission, "Hold Eliquis before surgery. Resume Eliquis after surgery.")
-    add_plan(submission, "Planned procedure: Example repair\nHold Eliquis before surgery. Postoperative management will be addressed after surgery.", "2030-06-27")
+    add_plan(
+        submission,
+        "Planned procedure: Example repair\nHold Eliquis before surgery. Postoperative management will be addressed after surgery.",
+        "2030-06-27",
+    )
     assert categories(submission) == {"ANTICOAGULATION_MANAGEMENT"}
 
 
 def test_newer_medication_list_does_not_supersede_management_plan(submission):
     submission["medications"] = [{"name": "apixaban", "active": True}]
-    add_plan(submission, "Hold Eliquis before surgery. Resume Eliquis after surgery.", "2030-06-19")
+    add_plan(
+        submission,
+        "Hold Eliquis before surgery. Resume Eliquis after surgery.",
+        "2030-06-19",
+    )
     submission["documents"][0]["text"] += "\nMEDICATIONS:\n  - Eliquis 5 mg twice daily"
+    assert triage_submission(submission, model="unused").decision == "READY"
+
+
+def test_old_hp_list_cannot_reactivate_structured_inactive_drug(submission):
+    submission["medications"] = [{"name": "warfarin", "active": False}]
+    submission["documents"][0]["text"] += "\nMEDICATIONS:\n  - warfarin 5 mg daily"
     assert triage_submission(submission, model="unused").decision == "READY"

@@ -4,7 +4,7 @@ REPORT ?= data/eval_report.json
 DETERMINISM_REPORT ?= data/determinism_report.json
 MODEL ?= gpt-4.1-mini
 
-.PHONY: baseline evals determinism score report test all clean
+.PHONY: baseline evals evals-local determinism score report test all clean
 
 baseline:
 	uv run run_baseline.py \
@@ -14,6 +14,12 @@ baseline:
 
 evals:
 	uv run run_evals.py \
+		--input $(INPUT) \
+		--outputs $(OUTPUT) \
+		--report $(REPORT)
+
+evals-local:
+	uv run score_local.py \
 		--input $(INPUT) \
 		--outputs $(OUTPUT) \
 		--report $(REPORT)

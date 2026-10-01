@@ -1,8 +1,11 @@
 """Facts retain their original source through normalization and policy evaluation."""
+
 from __future__ import annotations
 
 from typing import Generic, Literal, TypeVar
+
 from pydantic import BaseModel, model_validator
+
 from .models import Evidence
 
 T = TypeVar("T")
