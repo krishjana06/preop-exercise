@@ -68,3 +68,10 @@ def test_newer_incomplete_plan_supersedes_old_complete(submission):
     add_plan(submission, "Hold Eliquis before surgery. Resume Eliquis after surgery.")
     add_plan(submission, "Planned procedure: Example repair\nHold Eliquis before surgery. Postoperative management will be addressed after surgery.", "2030-06-27")
     assert categories(submission) == {"ANTICOAGULATION_MANAGEMENT"}
+
+
+def test_newer_medication_list_does_not_supersede_management_plan(submission):
+    submission["medications"] = [{"name": "apixaban", "active": True}]
+    add_plan(submission, "Hold Eliquis before surgery. Resume Eliquis after surgery.", "2030-06-19")
+    submission["documents"][0]["text"] += "\nMEDICATIONS:\n  - Eliquis 5 mg twice daily"
+    assert triage_submission(submission, model="unused").decision == "READY"

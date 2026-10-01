@@ -12,7 +12,7 @@ from .models import Document, PatientSubmission
 from .normalize import calendar_date, fahrenheit, normalize_text, timestamp
 from .provenance import ResolvedFact, SourceRef
 
-BP_PATTERN = re.compile(r"\b(?:NIBP|BP|Blood\s+pressure)\s*:?\s*(\d{2,3})\s*/\s*(\d{2,3})\b", re.I)
+BP_PATTERN = re.compile(r"(?:\b(?:NIBP|BP|Blood\s+pressure)\s*:?\s*|(?=\d{2,3}\s*/\s*\d{2,3}\s*mmHg))(\d{2,3})\s*/\s*(\d{2,3})\b(?:\s*mmHg)?", re.I)
 TEMP_PATTERN = re.compile(r"(?:(?:\bTemperature|\bTemp|\bT)\s*:?\s*)?\b(\d{2,3}(?:\.\d+)?)\s*°?\s*([FC])\b", re.I)
 DATE_PATTERN = r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{4}"
 SERVICE_DATE_PATTERN = re.compile(rf"\b(?:Date of service|Visit date|Observation date|Date)\s*:\s*({DATE_PATTERN})", re.I)
@@ -159,7 +159,10 @@ def extract_documents(submission: PatientSubmission) -> DocumentExtraction:
             else:
                 extraction.queries.append(Query(index, "CONSENT"))
         names = anticoagulants(text)
-        plan_candidate = bool(names and re.search(r"peri[- ]?op|anticoagulation|before surgery|after surgery|hold|restart|resume", text, re.I))
+        plan_candidate = bool(names and (
+            re.search(r"anticoagulation|perioperative medication plan|perioperative management", title + "\n" + text, re.I)
+            or any(anticoagulants(segment) and re.search(r"\b(?:hold|stop|resume|restart|continue)\b", segment, re.I) and re.search(r"before|after|pre[- ]?op|post[- ]?op", segment, re.I) for segment in re.split(r"\n|(?<=[.!?])\s+", text))
+        ))
         if plan_candidate:
             # Presence of a perioperative consultation does not itself establish current use.
             for name in sorted(names):

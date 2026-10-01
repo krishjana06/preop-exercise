@@ -2,6 +2,12 @@ from copy import deepcopy
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def no_live_api_in_unit_tests(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("PREOP_FALLBACK_MODEL", raising=False)
+
+
 @pytest.fixture
 def submission():
     return deepcopy({

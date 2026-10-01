@@ -42,6 +42,9 @@ def evaluate_facts(facts: FactBundle) -> TriageOutput:
 
 
 def triage_submission(submission: dict[str, object] | PatientSubmission, *, model: str) -> TriageOutput:
+    from .semantic import resolve_semantics
+
     validated = submission if isinstance(submission, PatientSubmission) else PatientSubmission.model_validate(submission)
     extraction = extract_documents(validated)
+    extraction = resolve_semantics(validated, extraction, model=model)
     return evaluate_facts(resolve_facts(validated, extraction))

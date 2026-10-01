@@ -63,3 +63,9 @@ def test_conditional_threshold_is_not_an_observation(submission):
     from core import triage_submission
     submission["documents"].append({"date": "2030-06-29", "text": "Call if BP 180/110 or Temperature 101.0 F."})
     assert triage_submission(submission, model="unused").decision == "READY"
+
+
+def test_unlabelled_mmhg_recheck_in_addendum(submission):
+    from core import triage_submission
+    submission["documents"].append({"date": "2030-06-29", "text": "08:00 NIBP 190/115.\nADDENDUM 08:30: Re-measured 130/75 mmHg following rest. Temperature 98.6 F."})
+    assert triage_submission(submission, model="unused").decision == "READY"
