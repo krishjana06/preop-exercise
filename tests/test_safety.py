@@ -38,3 +38,28 @@ def test_undated_measurement_cannot_be_declared_latest(submission):
     submission["vitals"][0]["date"] = None
     facts, _ = resolve_structured(PatientSubmission.model_validate(submission))
     assert facts.blood_pressure.state == "AMBIGUOUS"
+
+
+@pytest.mark.parametrize("text,excluded", [
+    ("08:06 BP 189/112. 08:30 repeat BP 137/78. T 37.0 C", False),
+    ("08:06 BP 137/78. 08:30 repeat BP 189/112. T 37.0 C", True),
+    ("08:30 Blood pressure 120/80, Temperature 38.6 °C", True),
+    ("08:30 NIBP 120/80, 38.0 °C temporal", False),
+])
+def test_newer_document_measurements(submission, text, excluded):
+    from core import triage_submission
+    submission["documents"].append({"type": "Nursing Intake", "date": "2030-06-29", "text": text})
+    assert (triage_submission(submission, model="unused").decision == "NOT_CLEARED") is excluded
+
+
+def test_later_flowsheet_reference_does_not_replace_measurement(submission):
+    from core import triage_submission
+    submission["vitals"][0]["systolic"] = 190
+    submission["documents"].append({"date": "2030-06-29", "text": "Vital signs: see flowsheet."})
+    assert triage_submission(submission, model="unused").decision == "NOT_CLEARED"
+
+
+def test_conditional_threshold_is_not_an_observation(submission):
+    from core import triage_submission
+    submission["documents"].append({"date": "2030-06-29", "text": "Call if BP 180/110 or Temperature 101.0 F."})
+    assert triage_submission(submission, model="unused").decision == "READY"
