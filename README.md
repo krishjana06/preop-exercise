@@ -2,32 +2,80 @@
 
 Evaluate one patient submission against the supplied Cadence policy. The function returns a decision, every independent blocker, and exact source evidence. Python applies clinical policy; an LLM extracts unresolved semantic facts only.
 
-## Run
+**This repository is the take-home submission to Cadence.** A “patient submission” means a patient JSON record passed into the program. The 50 supplied examples are enough to run and evaluate it; you do not need to create your own patient submission file.
+
+## Run and visually inspect the results
+
+Start with the terminal report viewer—it shows each patient submission alongside its decision, evidence, and expected result. Follow these steps to generate and open the report.
 
 Requires Python 3.11+ and `uv`. Dependencies are declared in `pyproject.toml` and locked in `uv.lock`.
 
+### 1. Open Terminal and enter the project
+
 ```bash
+cd /Users/krishjana/Desktop/preop-exercise
 uv sync --locked
+```
+
+If you cloned the repository somewhere else, use that directory in the `cd` command.
+
+### 2. Add your API key
+
+Create a `.env` file in the project directory:
+
+```bash
+nano .env
+```
+
+Paste this, replacing the placeholder with your actual key:
+
+```dotenv
+OPENAI_API_KEY=your_actual_api_key_here
+```
+
+Save with **Control+O → Enter**, then exit with **Control+X**. `.env` is already gitignored. The `UV_ENV_FILE=.env` prefix below tells `uv` to load the key for that command; the application does not automatically load `.env` itself.
+
+### 3. Run the tests and generate the report
+
+Run these commands in order:
+
+```bash
 make test
-make baseline
+UV_ENV_FILE=.env make baseline
 make evals-local
 make score
-make determinism
+UV_ENV_FILE=.env make determinism
 make report
 ```
 
-The deterministic path works without an API key. Unresolved required document meaning stays uncertain and produces follow-up. Enable semantic extraction and the original hosted Evals workflow with:
+The current expected results are **130 passing tests**, **100% local score**, and **100% exact replay stability**, as recorded in the [validation results](docs/validation.md). The sample inputs resolve deterministically, so these results do not verify your API key or live model extraction. Unit tests mock extraction and never call live models. Model-backed ambiguous inputs need separate live evaluation.
+
+| Command | What it does |
+| --- | --- |
+| `make test` | Runs the synthetic unit tests for parsing, policy, extraction routing, and failures. |
+| `UV_ENV_FILE=.env make baseline` | Processes all 50 sample records and writes decisions and evidence to `data/baseline_outputs.jsonl`. |
+| `make evals-local` | Compares outputs against the supplied labels and writes `data/eval_report.json`, using the supplied evaluator's schema, decision, and issue-category checks. |
+| `make score` | Prints the aggregate local score; the expected value is `100.0`. |
+| `UV_ENV_FILE=.env make determinism` | Repeats the default patient record ten times and writes stability metrics to `data/determinism_report.json`. |
+| `make report` | Opens the terminal viewer for the local evaluation report. |
+
+### 4. Inspect the report
+
+Use a wide terminal to see the patient input alongside the result pane, which compares actual and expected decisions and issue categories. Select records in the list with the arrow keys or mouse, then read each issue's source evidence to see why it was raised. To filter failures, focus the metrics table using **Tab** or a click, select a metric, and press **f**; press **f** again on that metric to clear the filter. Press **q** to quit.
+
+To inspect the replay metrics separately:
 
 ```bash
-export OPENAI_API_KEY="<your_api_key>"
-make baseline MODEL=gpt-4.1-mini
-make evals
-make score
+python3 -m json.tool data/determinism_report.json
 ```
 
-For a key in a local, gitignored `.env`, use `uv run --env-file .env run_baseline.py` or `UV_ENV_FILE=.env make baseline`. Unit tests mock extraction and never call live models.
+### Optional configuration
 
-`make evals` retains the supplied OpenAI Evals upload workflow and requires credentials. `make evals-local` uses the exact same local scoring functions in `run_evals.py` without uploading records. Its report works with the supplied viewer; press `f` to filter failures and `q` to quit.
+You can run the supplied sample walkthrough without a key: skip step 2 and omit `UV_ENV_FILE=.env` from the baseline and determinism commands. Unresolved required document meaning stays uncertain and produces follow-up when no key is available.
+
+Choose a primary model with `UV_ENV_FILE=.env make baseline MODEL=gpt-4.1-mini`. An optional `PREOP_FALLBACK_MODEL` entry in `.env` enables selective fallback for unresolved semantic tasks, as described below.
+
+`UV_ENV_FILE=.env make evals` runs the original hosted OpenAI Evals workflow and uploads patient submissions to that service. It requires credentials. The walkthrough above uses `make evals-local`, which scores locally without uploading records.
 
 ## Public interface
 
@@ -42,14 +90,22 @@ print(result.model_dump_json())
 
 ## Architecture
 
-```text
-Pydantic validation
-  -> structured normalization + deterministic document extraction
-  -> unresolved tasks only: semantic extraction + quote grounding
-  -> source reconciliation
-  -> all independent policy rules
-  -> decision precedence + sorted issues + deterministic explanation
+```mermaid
+flowchart TD
+    A[Patient JSON record] --> B[Pydantic validation]
+    B --> C[Deterministic document extraction]
+    C --> D{Unresolved semantic tasks?}
+    D -->|No| G[Structured normalization and source reconciliation]
+    D -->|Yes| E[Scoped model extraction and exact quote grounding]
+    E --> F[Optional fallback for remaining tasks]
+    F --> G
+    B --> G
+    G --> H[Evaluate every independent policy rule]
+    H --> I[Decision precedence and stable issue ordering]
+    I --> J[Decision, issues, source evidence, explanation]
 ```
+
+`run_baseline.py` reads patient records and calls `core.triage_submission`. The engine validates input, parses document facts, resolves any remaining semantic tasks, then merges them with normalized structured data. Rule evaluation produces the output JSON. `score_local.py` compares that output with the supplied labels through `run_evals.py`; `view_report.py` displays the resulting report. Expected labels are used for evaluation only and never determine the program's decisions.
 
 | Module | Responsibility |
 | --- | --- |
